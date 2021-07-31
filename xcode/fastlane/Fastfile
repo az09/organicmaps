@@ -1,0 +1,63 @@
+default_platform(:ios)
+
+platform :ios do
+  before_each do
+    #xcversion(
+    #  version: '~> 12.4.0'
+    #)
+    setup_ci
+    import_certificate(
+      certificate_path: 'keys/Distribution.p12',
+      certificate_password: ENV['APPSTORE_CERTIFICATE_PASSWORD'] || 'default',
+      keychain_name: ENV['MATCH_KEYCHAIN_NAME'] || 'login',
+      keychain_password: ENV['MATCH_KEYCHAIN_PASSWORD'] || nil
+    )
+    get_provisioning_profile(
+      api_key_path: 'keys/appstore.json',
+      app_identifier: 'app.organicmaps',
+      provisioning_name: 'CarPlay AppStore',
+      ignore_profiles_with_different_name: true,
+      adhoc: false,
+      readonly: true,
+      filename: 'keys/CarPlay_AppStore.mobileprovision'
+    )
+    install_provisioning_profile(
+      path: 'keys/CarPlay_AppStore.mobileprovision'
+    )
+  end
+
+  lane :beta do
+    changelog_from_git_commits(
+      between: ['HEAD', 'HEAD'],
+      pretty: '- (%ae) %s',
+      date_format: 'short',
+      match_lightweight_tag: false,
+      merge_commit_filtering: 'exclude_merges'
+    )
+    build_app(
+      workspace: 'omim.xcworkspace',
+      scheme: 'OMaps',
+      configuration: 'AppStore',
+      clean: false,
+      include_symbols: true,
+      include_bitcode: true,
+      #codesigning_identity: 'Apple Distribution: Organic Maps OU (9Z6432XD7L)',
+      export_method: 'app-store',
+      export_options: {
+        provisioningProfiles: {
+          'app.organicmaps' => 'CarPlay AppStore'
+        }
+      },
+      skip_profile_detection: false,
+      output_directory: 'build',
+      xcargs: 'MARKETING_VERSION=' + ENV['IOS_VERSION'] + ' ' +
+              'CURRENT_PROJECT_VERSION=' + ENV['IOS_BUILD'] + ' '
+    )
+    upload_to_testflight(
+      api_key_path: 'keys/appstore.json',
+      beta_app_feedback_email: 'testflight@organicmaps.app',
+      notify_external_testers: false,
+      changelog: lane_context[SharedValues::FL_CHANGELOG]
+    )
+  end
+end

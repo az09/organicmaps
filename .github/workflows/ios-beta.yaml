@@ -1,0 +1,82 @@
+name: iOS Beta
+on:
+  push:
+    branches:
+      - master
+      - rt-ios-testflight
+    paths-ignore:
+      - .github/workflows/android*
+      - .github/workflows/linux*
+      - "**/*_tests/**"
+      - "**/CMakeLists.txt"
+      - CONTRIBUTORS
+      - LICENSE
+      - NOTICE
+      - README.md
+      - android/**
+      - docs/**
+      - generator/**
+      - packaging/**
+      - pyhelpers/**
+      - qt*/**
+      - skin_generator/**
+      - track_generator/**
+
+jobs:
+  apple-testflight:
+    name: Apple TestFlight
+    runs-on: macos-latest
+    environment: beta
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install Ruby and Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "2.7"
+          bundler-cache: true
+          working-directory: xcode
+
+      - name: Check Fastlane version
+        run: bundle exec fastlane --version
+        working-directory: xcode
+
+      - name: Parallel submodules checkout
+        run: git submodule update --init --recursive --jobs=4
+
+      - name: Checkout private keys
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ secrets.PRIVATE_REPO }}
+          ssh-key: ${{ secrets.PRIVATE_SSH_KEY }}
+          ref: master
+          path: private.git
+
+      - name: Configure repo with private keys
+        run: |
+          ./configure.sh ./private.git
+          rm -rf ./private.git
+
+      - name: Generate version
+        id: version
+        run: |
+          timestamp=$(git log -1 --format=%ct)
+          date_of_last_commit=$(date -u -r $timestamp "+%Y-%m-%d")
+          build=$(git rev-list --count --after="${date_of_last_commit}T00:00:00Z" HEAD)
+          version="${date_of_last_commit//-/.}"
+          set -x
+          echo "::set-output name=version::${version}"
+          echo "::set-output name=build::${build}"
+
+      - name: Compile and upload
+        id: fastlane
+        run: bundle exec fastlane beta
+        env:
+          IOS_VERSION: "${{ steps.version.outputs.version }}"
+          IOS_BUILD: "${{ steps.version.outputs.build }}"
+          APPSTORE_CERTIFICATE_PASSWORD: "${{ secrets.APPSTORE_CERTIFICATE_PASSWORD }}"
+        working-directory: xcode

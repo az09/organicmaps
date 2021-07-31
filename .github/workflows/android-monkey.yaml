@@ -9,6 +9,7 @@ on:
     - .github/workflows/android-check*
     - .github/workflows/android-beta*
     - .github/workflows/linux*
+    - .github/workflows/ios*
     - '**/*_tests/**'
     - '**/CMakeLists.txt'
     - CONTRIBUTORS
